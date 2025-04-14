@@ -1,43 +1,38 @@
-import { useEffect, useState, useRef } from "react"
-import { projectFirestore } from "../firebase/config"
+import { useState, useEffect, useRef } from "react";
+import { db } from "../firebase/config";
+import { collection, onSnapshot, where, query, orderBy } from "firebase/firestore";
 
-export const useCollection = (collection, _query, _orderBy) => {
-  const [documents, setDocuments] = useState(null)
-  const [error, setError] = useState(null)
+export const useCollection = ({collectionName, _query, _orderBy}) => {
+  const [documents, setDocuments] = useState([]);
+  const [error, setError] = useState(null);
 
-  // if we don't use a ref --> infinite loop in useEffect
-  // _query is an array and is "different" on every function call
-  const query = useRef(_query).current
-  const orderBy = useRef(_orderBy).current
+  const queryParams = useRef(_query).current;
+  const orderParams = useRef(_orderBy).current;
 
   useEffect(() => {
-    let ref = projectFirestore.collection(collection)
+    let ref = collection(db, collectionName);
 
-    if (query) {
-      ref = ref.where(...query)
+    if (queryParams) {
+      ref = query(ref, where(...queryParams));
     }
-    if (orderBy) {
-      ref = ref.orderBy(...orderBy)
+    if (orderParams) {
+      ref = query(ref, orderBy(...orderParams));
     }
 
-    const unsubscribe = ref.onSnapshot(snapshot => {
-      let results = []
-      snapshot.docs.forEach(doc => {
-        results.push({...doc.data(), id: doc.id})
+    const unsubscribe = onSnapshot(ref, (snapshot) => {
+      let results = [];
+      snapshot.docs.forEach((doc) => {
+        results.push({ ...doc.data(), id: doc.id });
       });
-      
-      // update state
-      setDocuments(results)
-      setError(null)
-    }, error => {
-      console.log(error)
-      setError('could not fetch the data')
-    })
+      setDocuments(results);
+      setError(null);
+    }, (error) => {
+      console.error("Firestore error:", error);
+      setError("Could not fetch the documents");
+    });
 
-    // unsubscribe on unmount
-    return () => unsubscribe()
+    return () => unsubscribe();
+  }, [collectionName, orderParams, queryParams]);
 
-  }, [collection, query, orderBy])
-
-  return { documents, error }
+  return { documents, error };
 }

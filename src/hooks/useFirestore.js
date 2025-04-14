@@ -1,73 +1,77 @@
-import { useReducer, useEffect, useState } from "react"
-import { projectFirestore, timestamp } from "../firebase/config"
+import { useReducer } from 'react';
+import { db, timestamp } from '../firebase/config';
+import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
 let initialState = {
-  document: null,
-  isPending: false,
+  isLoading: false,
   error: null,
-  success: null
-}
+  document: null,
+  success: null,
+};
 
 const firestoreReducer = (state, action) => {
   switch (action.type) {
-    case 'IS_PENDING':
-      return { isPending: true, document: null, success: false, error: null }
+    case 'IS_LOADING':
+      return { isLoading: true, error: null, document: null, success: null };
     case 'ADDED_DOCUMENT':
-      return { isPending: false, document: action.payload, success: true, error: null }
+      return { isLoading: false, error: null, document: action.payload, success: true };
     case 'DELETED_DOCUMENT':
-      return { isPending: false, document: null, success: true, error: null }
+      return { isLoading: false, error: null, document: action.payload, success: true };
+    case 'UPDATED_DOCUMENT':
+      return { isLoading: false, error: null, document: action.payload, success: true };
     case 'ERROR':
-      return { isPending: false, document: null, success: false, error: action.payload }
+      return { isLoading: false, error: action.payload, document: null, success: false };
     default:
-      return state
+      return state;
   }
-}
+};
 
-export const useFirestore = (collection) => {
-  const [response, dispatch] = useReducer(firestoreReducer, initialState)
-  const [isCancelled, setIsCancelled] = useState(false)
 
-  // collection ref
-  const ref = projectFirestore.collection(collection)
+export const useFirestore = (collectionName) => {
+  const [response, dispatch] = useReducer(firestoreReducer, initialState);
 
-  // only dispatch is not cancelled
-  const dispatchIfNotCancelled = (action) => {
-    if (!isCancelled) {
-      dispatch(action)
-    }
-  }
+  // collection reference
+  const ref = collection(db, collectionName);
 
   // add a document
   const addDocument = async (doc) => {
-    dispatch({ type: 'IS_PENDING' })
+    dispatch({ type: 'IS_LOADING' });
 
     try {
-      const createdAt = timestamp.fromDate(new Date())
-      const addedDocument = await ref.add({ ...doc, createdAt })
-      dispatchIfNotCancelled({ type: 'ADDED_DOCUMENT', payload: addedDocument })
+      doc.createdAt = timestamp.fromDate(new Date());
+      const newDoc = await addDoc(ref, doc);
+      dispatch({ type: 'ADDED_DOCUMENT', payload: newDoc });
+    } catch (error) {
+      console.error('Firestore error:', error);
+      dispatch({ type: 'ERROR', payload: error.message });
     }
-    catch (err) {
-      dispatchIfNotCancelled({ type: 'ERROR', payload: err.message })
+  };
+
+  // update a document
+  const updateDocument = async (id, updates) => {
+    dispatch({ type: 'IS_LOADING' });
+
+    try {
+      const docRef = doc(ref, id);
+      const updatedDocument = await updateDoc(docRef, updates);
+      dispatch({ type: 'UPDATED_DOCUMENT', payload: updatedDocument });
+    } catch (error) {
+      dispatch({ type: 'ERROR', payload: error.message });
     }
   }
 
   // delete a document
   const deleteDocument = async (id) => {
-    dispatch({ type: 'IS_PENDING' })
+    dispatch({ type: 'IS_LOADING' });
 
     try {
-      await ref.doc(id).delete()
-      dispatchIfNotCancelled({ type: 'DELETED_DOCUMENT' })
-    }
-    catch (err) {
-      dispatchIfNotCancelled({ type: 'ERROR', payload: 'could not delete' })
+      const docRef = doc(ref, id);
+      const deletedDocument = await deleteDoc(docRef);
+      dispatch({ type: 'DELETED_DOCUMENT', payload: deletedDocument });
+    } catch (error) {
+      dispatch({ type: 'ERROR', payload: error.message });
     }
   }
-
-  useEffect(() => {
-    return () => setIsCancelled(true)
-  }, [])
-
-  return { addDocument, deleteDocument, response }
-
+  
+  return { addDocument, updateDocument, deleteDocument, response };
 }
